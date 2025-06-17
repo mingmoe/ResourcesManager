@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="../FNA/FNA.Core.csproj" />
+  <Project Path="Moe.ResourcesManager/Moe.ResourcesManager.csproj" />
+</Solution>
