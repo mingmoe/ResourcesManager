@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 using Rectangle = Microsoft.Xna.Framework.Rectangle;
+using Point = Microsoft.Xna.Framework.Point;
 
 namespace Moe.ResourcesManager;
 public static class TextureHelper

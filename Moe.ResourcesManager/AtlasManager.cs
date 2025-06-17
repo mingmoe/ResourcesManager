@@ -1,122 +1,101 @@
 ﻿using Microsoft.Xna.Framework;
-using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+using Microsoft.Xna.Framework.Graphics;
 using Rectangle = Microsoft.Xna.Framework.Rectangle;
 
 namespace Moe.ResourcesManager;
 
-public sealed class AtlasManager<T> where T : class
+public sealed class AtlasManager<T> : IDisposable where T : class
 {
-    public Texture2D Atlas { get; init; }
+    public const int DEFAULT_ATLAS_X = 2048;
+    public const int DEFAULT_ATLAS_Y = 2048;
 
-    public ResourceID ResourceId { get; init; }
+    public GraphicsDevice Device { get; init; }
 
-    public IReadOnlyDictionary<T, Rectangle> ReadonlyAtlasIndex => AtlasIndex;
+    public ResourceID ResourceID { get; init; }
 
-    private Dictionary<T, Rectangle> AtlasIndex { get; init; } = [];
+    private readonly List<TextureAtlasManager<T>> managers = [];
 
-    private readonly int maxX;
+    private readonly Dictionary<T, TextureAtlasManager<T>> index = [];
 
-    private readonly int maxY;
-
-    private int _xPen = 0;
-
-    private int _currentLinePen = 0;
-
-    private int _currentLinePitch = 0;
-
-    public AtlasManager(ResourceID resourceId, GraphicsDevice device)
-        : this(resourceId, device, 2048, 2048)
+    public AtlasManager(GraphicsDevice device, ResourceID id)
     {
+        Device = device;
+        ResourceID = id;
+        managers.Add(new(id, device, DEFAULT_ATLAS_X, DEFAULT_ATLAS_Y));
     }
 
-    public AtlasManager(ResourceID resourceId, GraphicsDevice device, int width, int height)
+    public bool TryGet(T key, [NotNullWhen(true)] out (Texture2D, Rectangle)? result)
     {
-        ResourceId = resourceId;
-        Atlas = new(device, width, height, false, SurfaceFormat.Color);
-        maxX = Atlas.Width;
-        maxY = Atlas.Height;
-    }
-
-    private bool _TryAddInternal(T key, Texture2D texture)
-    {
-        // out of range
-        if (_currentLinePen > maxY)
+        if (index.TryGetValue(key, out var manager))
         {
-            return false;
-        }
+            var got = manager.ReadonlyAtlasIndex.TryGetValue(key, out var rect);
 
-        int x = texture.Width;
-        int y = texture.Height;
+            Trace.Assert(got);
 
-        // width is too big
-        if (x > maxX)
-        {
-            return false;
-        }
-        // the y is not enough
-        if (_currentLinePen + y > maxY)
-        {
-            return false;
-        }
-
-        // the y is enough
-        // try old line
-        if (_xPen + x <= maxX)
-        {
-            // old line is enough
-            _currentLinePitch = int.Max(_currentLinePitch, y);
-
-            TextureHelper.CopyTextureColor(texture, Atlas, null, new(_xPen, _currentLinePen));
-            AtlasIndex.Add(key, new(_xPen, _currentLinePen, x, y));
-            _xPen += x;
-
+            result = (manager.Atlas, rect);
             return true;
         }
 
-        // try new line
-        _currentLinePen += _currentLinePitch;
-        _currentLinePitch = y;
-        _xPen = 0;
-
-        if (_currentLinePen + y > maxY)
-        {
-            // new line has not enough height
-            return false;
-        }
-
-        // ok,we have ensure the x <= xMax above
-        // so newline is enough
-        TextureHelper.CopyTextureColor(texture, Atlas, null, new(_xPen, _currentLinePen));
-        AtlasIndex.Add(key, new(_xPen, _currentLinePen, x, y));
-        _xPen += x;
-
-        return true;
+        result = null;
+        return false;
     }
 
-    public bool TryAdd(T key, Texture2D texture)
+    public (Texture2D, Rectangle) Set(T key, Texture2D texture)
     {
-        var currentXPen = _xPen;
-        var currentLinePen = _currentLinePen;
-        var currentPitch = _currentLinePitch;
+        var allocated = Alloc(key, new(texture.Width, texture.Height));
+        TextureHelper.CopyTextureColor(
+            texture,
+            allocated.Item1,
+            null,
+            new(allocated.Item2.X, allocated.Item2.Y));
+        return allocated;
+    }
 
-        var result = _TryAddInternal(key, texture);
-
-        if (result)
+    public (Texture2D, Rectangle) Alloc(T key, Point size)
+    {
+        if (index.ContainsKey(key))
         {
-            return result;
+            throw new InvalidOperationException("the key exists");
         }
 
-        // go back
-        _xPen = currentXPen;
-        _currentLinePen = currentLinePen;
-        _currentLinePitch = currentPitch;
+        foreach (var manager in ListHelper.FastReverse(managers))
+        {
+            var added = manager.TryAlloc(key, size, out var rect1);
 
-        return false;
+            if (added)
+            {
+                index[key] = manager;
+
+                return (manager.Atlas, rect1!.Value);
+            }
+        }
+
+        // create new
+        int x = int.Max(DEFAULT_ATLAS_X, size.X);
+        int y = int.Max(DEFAULT_ATLAS_Y, size.Y);
+
+        var mgr = new TextureAtlasManager<T>(ResourceID, Device, x, y);
+        Trace.Assert(mgr.TryAlloc(key, size, out var rect2));
+        index[key] = mgr;
+        managers.Add(mgr);
+
+        return (mgr.Atlas, rect2!.Value);
+    }
+
+    public void Dispose()
+    {
+        foreach (var manager in managers)
+        {
+            manager.Dispose();
+        }
+        GC.SuppressFinalize(this);
     }
 }
