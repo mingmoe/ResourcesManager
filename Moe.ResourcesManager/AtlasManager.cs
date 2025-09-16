@@ -48,7 +48,7 @@ public sealed class AtlasManager<T> : IDisposable where T : class
         return false;
     }
 
-    public (Texture2D, Rectangle) Set(T key, Texture2D texture)
+    public (Texture2D, Rectangle) AllocAndCopyTo(T key, Texture2D texture)
     {
         var allocated = Alloc(key, new(texture.Width, texture.Height));
         TextureHelper.CopyTextureColor(
