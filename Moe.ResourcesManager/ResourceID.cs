@@ -33,7 +33,10 @@ public sealed class ResourceID : IEquatable<ResourceID>
     {
         fileName = Path.GetFullPath(fileName);
 
-        Trace.Assert(File.Exists(fileName), "the file must exists");
+        if (File.Exists(fileName))
+        {
+            throw new ArgumentException("the file must exists", nameof(fileName));
+        }
 
         var file = new FileInfo(fileName);
 
