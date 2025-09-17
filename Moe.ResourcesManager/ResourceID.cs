@@ -33,7 +33,7 @@ public sealed class ResourceID : IEquatable<ResourceID>
     {
         fileName = Path.GetFullPath(fileName);
 
-        if (File.Exists(fileName))
+        if (!File.Exists(fileName))
         {
             throw new ArgumentException("the file must exists", nameof(fileName));
         }
